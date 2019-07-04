@@ -11,7 +11,7 @@ class LoginSignUpPage extends StatefulWidget {
   State<StatefulWidget> createState() => new _LoginSignUpPageState();
 }
 
-enum FormMode { LOGIN, SIGNUP }
+enum FormMode { LOGIN, SIGNUP, RESET }
 
 class _LoginSignUpPageState extends State<LoginSignUpPage> {
   final _formKey = new GlobalKey<FormState>();
@@ -53,6 +53,9 @@ class _LoginSignUpPageState extends State<LoginSignUpPage> {
         if (_formMode == FormMode.LOGIN) {
           userId = await widget.auth.signIn(_email, _password);
           print('Signed in: $userId');
+        } else if (_formMode == FormMode.RESET) {
+          await widget.auth.resetPassword(_email);
+          _showResetEmailSentDialog();
         } else {
           userId = await widget.auth.signUp(_email, _password);
           widget.auth.sendEmailVerification();
@@ -63,10 +66,11 @@ class _LoginSignUpPageState extends State<LoginSignUpPage> {
           _isLoading = false;
         });
 
-        if (userId != null && userId.length > 0 && _formMode == FormMode.LOGIN) {
+        if (userId != null &&
+            userId.length > 0 &&
+            _formMode == FormMode.LOGIN) {
           widget.onSignedIn();
         }
-
       } catch (e) {
         print('Error: $e');
         setState(() {
@@ -79,7 +83,6 @@ class _LoginSignUpPageState extends State<LoginSignUpPage> {
       }
     }
   }
-
 
   @override
   void initState() {
@@ -104,6 +107,14 @@ class _LoginSignUpPageState extends State<LoginSignUpPage> {
     });
   }
 
+  void _changeFormToReset() {
+    _formKey.currentState.reset();
+    _errorMessage = "";
+    setState(() {
+      _formMode = FormMode.RESET;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     _isIos = Theme.of(context).platform == TargetPlatform.iOS;
@@ -119,11 +130,14 @@ class _LoginSignUpPageState extends State<LoginSignUpPage> {
         ));
   }
 
-  Widget _showCircularProgress(){
+  Widget _showCircularProgress() {
     if (_isLoading) {
       return Center(child: CircularProgressIndicator());
-    } return Container(height: 0.0, width: 0.0,);
-
+    }
+    return Container(
+      height: 0.0,
+      width: 0.0,
+    );
   }
 
   void _showVerifyEmailSentDialog() {
@@ -133,7 +147,8 @@ class _LoginSignUpPageState extends State<LoginSignUpPage> {
         // return object of type Dialog
         return AlertDialog(
           title: new Text("Verify your account"),
-          content: new Text("Link to verify account has been sent to your email"),
+          content:
+              new Text("Link to verify account has been sent to your email"),
           actions: <Widget>[
             new FlatButton(
               child: new Text("Dismiss"),
@@ -148,7 +163,29 @@ class _LoginSignUpPageState extends State<LoginSignUpPage> {
     );
   }
 
-  Widget _showBody(){
+  void _showResetEmailSentDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        // return object of type Dialog
+        return AlertDialog(
+          title: new Text("Password Reset"),
+          content: new Text(" Reset instruction has been sent to your email"),
+          actions: <Widget>[
+            new FlatButton(
+              child: new Text("Dismiss"),
+              onPressed: () {
+                _changeFormToLogin();
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _showBody() {
     return new Container(
         padding: EdgeInsets.all(16.0),
         child: new Form(
@@ -161,27 +198,11 @@ class _LoginSignUpPageState extends State<LoginSignUpPage> {
               _showPasswordInput(),
               _showPrimaryButton(),
               _showSecondaryButton(),
+              _showTertiaryButton(),
               _showErrorMessage(),
             ],
           ),
         ));
-  }
-
-  Widget _showErrorMessage() {
-    if (_errorMessage != null && _errorMessage.length > 0) {
-      return new Text(
-        _errorMessage,
-        style: TextStyle(
-            fontSize: 13.0,
-            color: Colors.red,
-            height: 1.0,
-            fontWeight: FontWeight.w300),
-      );
-    } else {
-      return new Container(
-        height: 0.0,
-      );
-    }
   }
 
   Widget _showLogo() {
@@ -215,17 +236,55 @@ class _LoginSignUpPageState extends State<LoginSignUpPage> {
           }
         },
         onSaved: (value) => _email = value,
-        onFieldSubmitted: (term){
-          _fieldFocusChange(context, _emailFocus, _passwordFocus);
+        onFieldSubmitted: (term) {
+          if (_formMode == FormMode.RESET) {
+            _emailFocus.unfocus();
+            _validateAndSubmit();
+          }
+          else {
+            _fieldFocusChange(context, _emailFocus, _passwordFocus);
+          }
         },
       ),
     );
   }
 
+  Widget _showPasswordForm() {
+    if (_formMode == FormMode.LOGIN || _formMode == FormMode.SIGNUP) {
+      return new TextFormField(
+          controller: _passwordController,
+          maxLines: 1,
+          obscureText: true,
+          autofocus: false,
+          focusNode: _passwordFocus,
+          decoration: new InputDecoration(
+              hintText: 'Password',
+              icon: new Icon(
+                Icons.lock,
+                color: Colors.grey,
+              )),
+          validator: (value) {
+            if (value.isEmpty) {
+              setState(() {
+                _isLoading = false;
+              });
+              return 'Email can\'t be empty';
+            }
+          },
+          onSaved: (value) => _password = value,
+          onFieldSubmitted: (value) {
+            _passwordFocus.unfocus();
+            _validateAndSubmit();
+          },
+      );
+    }
+  }
+
   Widget _showPasswordInput() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(0.0, 15.0, 0.0, 0.0),
-      child: new TextFormField(
+      child: _showPasswordForm(),
+      /*child: new TextFormField(
         controller: _passwordController,
         maxLines: 1,
         obscureText: true,
@@ -246,32 +305,30 @@ class _LoginSignUpPageState extends State<LoginSignUpPage> {
           }
         },
         onSaved: (value) => _password = value,
-        onFieldSubmitted: (value){
+        onFieldSubmitted: (value) {
           _passwordFocus.unfocus();
           _validateAndSubmit();
         },
-      ),
+      ),*/
     );
   }
 
-  _fieldFocusChange(BuildContext context, FocusNode
-      currentFocus, FocusNode nextFocus) {
+  _fieldFocusChange(
+      BuildContext context, FocusNode currentFocus, FocusNode nextFocus) {
     currentFocus.unfocus();
     FocusScope.of(context).requestFocus(nextFocus);
   }
 
-  Widget _showSecondaryButton() {
-    return new FlatButton(
-      child: _formMode == FormMode.LOGIN
-          ? new Text('Create an account',
-          style: new TextStyle(fontSize: 18.0, fontWeight: FontWeight.w300))
-          : new Text('Have an account? Sign in',
-          style:
-          new TextStyle(fontSize: 18.0, fontWeight: FontWeight.w300)),
-      onPressed: _formMode == FormMode.LOGIN
-          ? _changeFormToSignUp
-          : _changeFormToLogin,
-    );
+  Widget _primaryButtonText() {
+    if (_formMode == FormMode.LOGIN) {
+      return new Text('Login',
+          style: new TextStyle(fontSize: 20.0, color: Colors.white));
+    } else if (_formMode == FormMode.SIGNUP) {
+      return new Text('Create account',
+          style: new TextStyle(fontSize: 20.0, color: Colors.white));
+    }
+    return new Text('Reset Password',
+        style: new TextStyle(fontSize: 20.0, color: Colors.white));
   }
 
   Widget _showPrimaryButton() {
@@ -281,15 +338,58 @@ class _LoginSignUpPageState extends State<LoginSignUpPage> {
           height: 40.0,
           child: new RaisedButton(
             elevation: 5.0,
-            shape: new RoundedRectangleBorder(borderRadius: new BorderRadius.circular(30.0)),
+            shape: new RoundedRectangleBorder(
+                borderRadius: new BorderRadius.circular(30.0)),
             color: Colors.blue,
-            child: _formMode == FormMode.LOGIN
+            child: _primaryButtonText(),
+            /*child: _formMode == FormMode.LOGIN
                 ? new Text('Login',
                 style: new TextStyle(fontSize: 20.0, color: Colors.white))
                 : new Text('Create account',
-                style: new TextStyle(fontSize: 20.0, color: Colors.white)),
+                style: new TextStyle(fontSize: 20.0, color: Colors.white)),*/
             onPressed: _validateAndSubmit,
           ),
         ));
+  }
+
+  Widget _showSecondaryButton() {
+    return new FlatButton(
+      child: _formMode == FormMode.LOGIN
+          ? new Text('Create an account',
+              style: new TextStyle(fontSize: 18.0, fontWeight: FontWeight.w300))
+          : new Text('Have an account? Sign in',
+              style:
+                  new TextStyle(fontSize: 18.0, fontWeight: FontWeight.w300)),
+      onPressed: _formMode == FormMode.LOGIN
+          ? _changeFormToSignUp
+          : _changeFormToLogin,
+    );
+  }
+
+  Widget _showTertiaryButton() {
+    return new FlatButton(
+      child: _formMode == FormMode.LOGIN
+          ? new Text('Forgot password',
+              style: new TextStyle(fontSize: 18.0, fontWeight: FontWeight.w300))
+          : null,
+      onPressed: _formMode == FormMode.LOGIN ? _changeFormToReset : null,
+    );
+  }
+
+  Widget _showErrorMessage() {
+    if (_errorMessage != null && _errorMessage.length > 0) {
+      return new Text(
+        _errorMessage,
+        style: TextStyle(
+            fontSize: 13.0,
+            color: Colors.red,
+            height: 1.0,
+            fontWeight: FontWeight.w300),
+      );
+    } else {
+      return new Container(
+        height: 0.0,
+      );
+    }
   }
 }
